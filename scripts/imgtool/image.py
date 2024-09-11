@@ -19,6 +19,10 @@
 """
 Image signing and management.
 """
+import os
+import logging
+import inspect
+import random
 
 from . import version as versmod
 from .boot_record import create_sw_component_data
@@ -37,6 +41,9 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.exceptions import InvalidSignature
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 IMAGE_MAGIC = 0x96f3b83d
 IMAGE_HEADER_SIZE = 32
@@ -95,6 +102,10 @@ VerifyResult = Enum('VerifyResult',
                     INVALID_SIGNATURE
                     """)
 
+def log_calling_path():
+    stack = inspect.stack()
+    calling_path = " -> ".join([f"{frame.function} ({os.path.basename(frame.filename)})" for frame in stack[1:]])
+    logger.debug(f"Calling path: {calling_path}")
 
 def align_up(num, align):
     assert (align & (align - 1) == 0) and align != 0
@@ -143,6 +154,8 @@ class Image():
                  overwrite_only=False, endian="little", load_addr=0,
                  rom_fixed=None, erased_val=None, save_enctlv=False,
                  security_counter=None, max_align=None):
+
+        logger.info("MARKUS: __init__")
 
         if load_addr and rom_fixed:
             raise click.UsageError("Can not set rom_fixed and load_addr at the same time")
@@ -211,6 +224,9 @@ class Image():
 
     def load(self, path):
         """Load an image from a given file"""
+
+        logger.info(f"MARKUS:Load image path: {path}")
+
         ext = os.path.splitext(path)[1][1:].lower()
         try:
             if ext == INTEL_HEX_EXT:
@@ -235,6 +251,8 @@ class Image():
 
     def save(self, path, hex_addr=None):
         """Save an image from a given file"""
+        logger.info(f"MARKUS:save path: {path}")
+        log_calling_path()
         ext = os.path.splitext(path)[1][1:].lower()
         if ext == INTEL_HEX_EXT:
             # input was in binary format, but HEX needs to know the base addr
@@ -539,6 +557,8 @@ class Image():
     def add_header(self, enckey, protected_tlv_size, aes_length=128):
         """Install the image header."""
 
+        logger.info("MARKUS:add_header")
+
         flags = 0
         if enckey is not None:
             if aes_length == 128:
@@ -565,6 +585,8 @@ class Image():
                'I'       # Pad1     uint32
                )  # }
         assert struct.calcsize(fmt) == IMAGE_HEADER_SIZE
+        padding = 0 #random.randint(0, 0xffffffff)
+        logger.info(f"IMAGE_MAGIC: {IMAGE_MAGIC}, self.rom_fixed: {self.rom_fixed}, self.load_addr: {self.load_addr}, self.header_size: {self.header_size}, protected_tlv_size: {protected_tlv_size}, len(self.payload): {len(self.payload)}, flags: {flags}, self.version.major: {self.version.major}, self.version.minor: {self.version.minor}, self.version.revision: {self.version.revision}, self.version.build: {self.version.build}, padding: {padding}")
         header = struct.pack(fmt,
                              IMAGE_MAGIC,
                              self.rom_fixed or self.load_addr,
@@ -577,9 +599,13 @@ class Image():
                              self.version.minor or 0,
                              self.version.revision or 0,
                              self.version.build or 0,
-                             0)  # Pad1
+                             padding)  # Pad1
         self.payload = bytearray(self.payload)
         self.payload[:len(header)] = header
+
+        start_address = id(self.payload)
+        end_address = start_address + len(self.payload)
+        logger.info(f"Start address {start_address}, end address {end_address}")
 
     def _trailer_size(self, write_size, max_sectors, overwrite_only, enckey,
                       save_enctlv, enctlv_len):

@@ -623,3 +623,99 @@ if(SYSBUILD AND CONFIG_PCD_APP)
     set(RAM_FLASH_ADDR "${ram_flash_addr}" CACHE STRING "" FORCE)
     set(RAM_FLASH_SIZE "${ram_flash_size}" CACHE STRING "" FORCE)
 endif()
+
+# Source location.
+set(PLATFORM_PSA_ADAC_SOURCE_PATH "${ZEPHYR_TRUSTED_FIRMWARE_M_MODULE_DIR}/../psa-adac")
+
+# Target location.
+set(PLATFORM_PSA_ADAC_BUILD_PATH "${CMAKE_BINARY_DIR}/modules/libpsaadac")
+
+# Target. TODO: Should not be trusted-firmware-m with mcuboot.
+set(PSA_ADAC_TARGET "trusted-firmware-m")
+
+# Platform path inside target.
+set(TFM_PLATFORM "ext/nordic/nrf54l15")
+
+# Mbed TLS include paths needed for using PSA Crypto with nRF54L15.
+# Note: NRF_SECURITY_ROOT and OBERON includes rely on the generated PSA_CRYPTO_CONFIG.
+set(PSA_ADAC_MBEDTLS_INCLUDE "")
+list(APPEND PSA_ADAC_MBEDTLS_INCLUDE "${PSA_CRYPTO_CONFIG_INTERFACE_PATH}")
+list(APPEND PSA_ADAC_MBEDTLS_INCLUDE "${NRF_SECURITY_ROOT}/include")
+list(APPEND PSA_ADAC_MBEDTLS_INCLUDE "${NRF_SECURITY_ROOT}/src/drivers/cracen/cracenpsa/include")
+list(APPEND PSA_ADAC_MBEDTLS_INCLUDE "${NRF_SECURITY_ROOT}/src/drivers/cracen/sicrypto/include")
+list(APPEND PSA_ADAC_MBEDTLS_INCLUDE "${NRF_SECURITY_ROOT}/src/drivers/cracen/common/include")
+list(APPEND PSA_ADAC_MBEDTLS_INCLUDE "${NRF_SECURITY_ROOT}/src/drivers/cracen/sxsymcrypt/include")
+list(APPEND PSA_ADAC_MBEDTLS_INCLUDE "${NRF_SECURITY_ROOT}/src/drivers/cracen/silexpk/include")
+list(APPEND PSA_ADAC_MBEDTLS_INCLUDE "${OBERON_PSA_CORE_PATH}/include")
+list(APPEND PSA_ADAC_MBEDTLS_INCLUDE "${OBERON_PSA_CORE_PATH}/library")
+
+# NRFX include paths needed for ap-ctrl debug port and approtect.
+set (NRFX_INCLUDE_PATHS "")
+list(APPEND NRFX_INCLUDE_PATHS "${ZEPHYR_HAL_NORDIC_MODULE_DIR}/nrfx")
+list(APPEND NRFX_INCLUDE_PATHS "${ZEPHYR_HAL_NORDIC_MODULE_DIR}/nrfx/mdk")
+list(APPEND NRFX_INCLUDE_PATHS "${ZEPHYR_HAL_NORDIC_MODULE_DIR}/nrfx/hal")
+list(APPEND NRFX_INCLUDE_PATHS "${ZEPHYR_HAL_NORDIC_MODULE_DIR}/nrfx/soc")
+list(APPEND NRFX_INCLUDE_PATHS "${ZEPHYR_CMSIS_MODULE_DIR}/CMSIS/Core/Include")
+
+# Compile definitions needed for PSA crypto and nrfx.
+set(EXTERNAL_COMPILE_DEFINITIONS "")
+list(APPEND EXTERNAL_COMPILE_DEFINITIONS "NRF54L15_XXAA")
+list(APPEND EXTERNAL_COMPILE_DEFINITIONS "NRF_APPLICATION")
+list(APPEND EXTERNAL_COMPILE_DEFINITIONS "MBEDTLS_PSA_CRYPTO_C")
+list(APPEND EXTERNAL_COMPILE_DEFINITIONS "PSA_CRYPTO_DRIVER_CRACEN")
+list(APPEND EXTERNAL_COMPILE_DEFINITIONS "MBEDTLS_CONFIG_FILE=\\\"${CONFIG_MBEDTLS_CFG_FILE}\\\"")
+list(APPEND EXTERNAL_COMPILE_DEFINITIONS "MBEDTLS_PSA_CRYPTO_CONFIG_FILE=\\\"${CONFIG_MBEDTLS_PSA_CRYPTO_CONFIG_FILE}\\\"")
+
+# Custom target to generate the CMakeCache.txt for the PSA ADAC library.
+file(MAKE_DIRECTORY ${PLATFORM_PSA_ADAC_BUILD_PATH})
+add_custom_target(adac_cmake
+   DEPENDS ${PLATFORM_PSA_ADAC_BUILD_PATH}/CMakeCache.txt
+)
+add_custom_command(
+  OUTPUT ${PLATFORM_PSA_ADAC_BUILD_PATH}/CMakeCache.txt
+  COMMAND ${CMAKE_COMMAND}
+    -G${CMAKE_GENERATOR}
+      -DPSA_ADAC_TARGET="${PSA_ADAC_TARGET}"
+      -DPSA_ADAC_MBEDTLS_INCLUDE="${PSA_ADAC_MBEDTLS_INCLUDE}"
+      -DTFM_PLATFORM="${TFM_PLATFORM}"
+      -DNRF_TARGET_NRFX_INCLUDE_PATHS="${NRFX_INCLUDE_PATHS}"
+      -DCMAKE_BUILD_TYPE="Debug" # TODO: Should depend on Zephyr Kconfigs.
+      -DEXTERNAL_COMPILE_DEFINITIONS="${EXTERNAL_COMPILE_DEFINITIONS}"
+      -DCOMPILER="GNUARM"
+    ${PLATFORM_PSA_ADAC_SOURCE_PATH}
+  WORKING_DIRECTORY ${PLATFORM_PSA_ADAC_BUILD_PATH}
+  COMMAND_EXPAND_LISTS
+)
+
+# Build the PSA ADAC library.
+set(ADAC_LIBRARY ${PLATFORM_PSA_ADAC_BUILD_PATH}/libtrusted-firmware-m-psa-adac.a)
+include(ExternalProject)
+ExternalProject_Add(
+    psa-adac
+    SOURCE_DIR ${PLATFORM_PSA_ADAC_SOURCE_PATH}
+    BINARY_DIR ${PLATFORM_PSA_ADAC_BUILD_PATH}
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ${CMAKE_COMMAND} --build . ${PARALLEL_JOBS}
+    INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+    BUILD_ALWAYS True
+    USES_TERMINAL_BUILD True
+    DEPENDS adac_cmake
+    BUILD_BYPRODUCTS ${ADAC_LIBRARY}
+  )
+
+# Add the PSA ADAC as a Zephyr compatible library.
+add_library(psa-adac_lib STATIC IMPORTED GLOBAL)
+
+# Set the library location.
+set_target_properties(psa-adac_lib PROPERTIES
+    IMPORTED_LOCATION ${ADAC_LIBRARY}
+)
+
+# Add the PSA ADAC library as a dependency to the Zephyr library.
+add_dependencies(
+  psa-adac_lib
+  psa-adac
+)
+target_link_libraries(${ZEPHYR_CURRENT_LIBRARY} INTERFACE psa-adac_lib)
+
+zephyr_include_directories(${PLATFORM_PSA_ADAC_BUILD_PATH}/install/include)

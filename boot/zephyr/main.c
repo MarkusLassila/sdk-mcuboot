@@ -73,6 +73,8 @@
 #include <fw_info.h>
 #endif
 
+#include "psa_adac_platform.h"
+
 #ifdef CONFIG_MCUBOOT_SERIAL
 #include "boot_serial/boot_serial.h"
 #include "serial_adapter/serial_adapter.h"
@@ -650,6 +652,21 @@ int main(void)
 #endif
 #endif
 #endif /* USE_PARTITION_MANAGER && CONFIG_FPROTECT */
+
+
+    /* TODO:
+     * - Store cerificate in KMU.
+     * - Kconfig option for ADAC.
+     */
+
+    /* Self generated ADAC root certificate public key for testing purposes. */
+    static uint8_t secure_debug_rotpk[32] = {
+        0x76, 0x9c, 0x4e, 0xc2, 0xa4, 0x75, 0xda, 0xf4,
+        0x10, 0xba, 0x9d, 0x95, 0xad, 0x72, 0x54, 0xa4,
+        0xeb, 0x77, 0x2d, 0xb6, 0xb7, 0x6f, 0x89, 0x0d,
+        0xa1, 0x02, 0xd4, 0xe5, 0x9b, 0xc9, 0x73, 0xdf};
+
+    (void)tfm_to_psa_adac_nordic_secure_debug((uint8_t *)&secure_debug_rotpk, sizeof(secure_debug_rotpk));
 
     ZEPHYR_BOOT_LOG_STOP();
 

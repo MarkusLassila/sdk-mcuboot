@@ -520,6 +520,16 @@ config BOOT_SIGNATURE_KEY_FILE
 	  with the public key information will be written in a format expected by
 	  MCUboot.
 
+config BOOT_SECOND_SIGNATURE_KEY_FILE
+	string "Second PEM key file for in-field key rotation"
+	default ""
+	help
+	  Optional second public key (absolute path to a PEM file). When set,
+	  MCUboot is compiled with two verification keys so that images signed
+	  with either key are accepted. Used during the transition phase of a
+	  key rotation. Must be an absolute path; set via MCUBOOT_BAKE_PUBKEY_2
+	  on the west build command line.
+
 endif
 
 config SOC_NRF54LX_SKIP_GLITCHDETECTOR_DISABLE

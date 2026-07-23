@@ -465,6 +465,27 @@ if(NOT CONFIG_BOOT_SIGNATURE_USING_KMU AND NOT CONFIG_BOOT_SIGNATURE_KEY_FILE ST
   zephyr_library_sources(${GENERATED_PUBKEY})
 endif()
 
+# Optional second public key for in-field key rotation.
+# Pass -DMCUBOOT_BAKE_PUBKEY_2=<path> to west build to enable.
+if(DEFINED CONFIG_BOOT_SECOND_SIGNATURE_KEY_FILE AND
+   NOT CONFIG_BOOT_SECOND_SIGNATURE_KEY_FILE STREQUAL "")
+  set(GENERATED_PUBKEY_2 ${ZEPHYR_BINARY_DIR}/autogen-pubkey-2.c)
+  execute_process(
+    COMMAND ${PYTHON_EXECUTABLE} ${MCUBOOT_DIR}/scripts/imgtool.py getpub
+            -k ${CONFIG_BOOT_SECOND_SIGNATURE_KEY_FILE}
+    OUTPUT_VARIABLE _raw_pub_key_2
+    RESULT_VARIABLE _result
+  )
+  if(NOT _result EQUAL 0)
+    message(FATAL_ERROR "MCUboot: failed to extract second public key from ${CONFIG_BOOT_SECOND_SIGNATURE_KEY_FILE}")
+  endif()
+  string(REPLACE "ecdsa_pub_key" "ecdsa_pub_key_2" _raw_pub_key_2 "${_raw_pub_key_2}")
+  file(WRITE ${GENERATED_PUBKEY_2} "${_raw_pub_key_2}")
+  zephyr_library_sources(${GENERATED_PUBKEY_2})
+  zephyr_compile_definitions(MCUBOOT_SIGN_EC256_SECOND_KEY)
+  message(STATUS "MCUboot: second public key baked in for key rotation (${CONFIG_BOOT_SECOND_SIGNATURE_KEY_FILE})")
+endif()
+
 if(CONFIG_BOOT_ENCRYPTION_KEY_FILE AND NOT CONFIG_BOOT_ENCRYPTION_KEY_FILE STREQUAL "")
   # CONF_FILE points to the KConfig configuration files of the bootloader.
   unset(CONF_DIR)

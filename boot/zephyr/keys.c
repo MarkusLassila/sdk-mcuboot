@@ -37,6 +37,11 @@ extern unsigned int rsa_pub_key_len;
 #elif defined(MCUBOOT_SIGN_EC256)
 extern const unsigned char ecdsa_pub_key[];
 extern unsigned int ecdsa_pub_key_len;
+/* Optional second key for in-field key rotation (MCUBOOT_SIGN_EC256_SECOND_KEY). */
+#if defined(MCUBOOT_SIGN_EC256_SECOND_KEY)
+extern const unsigned char ecdsa_pub_key_2[];
+extern unsigned int ecdsa_pub_key_2_len;
+#endif
 #elif defined(MCUBOOT_SIGN_ED25519)
 extern const unsigned char ed25519_pub_key[];
 extern unsigned int ed25519_pub_key_len;
@@ -62,8 +67,18 @@ const struct bootutil_key bootutil_keys[] = {
         .len = &ed25519_pub_key_len,
 #endif
     },
+#if defined(MCUBOOT_SIGN_EC256_SECOND_KEY)
+    {
+        .key = ecdsa_pub_key_2,
+        .len = &ecdsa_pub_key_2_len,
+    },
+#endif
 };
-const int bootutil_key_cnt = 1;
+const int bootutil_key_cnt = 1
+#if defined(MCUBOOT_SIGN_EC256_SECOND_KEY)
+    + 1
+#endif
+    ;
 #endif /* HAVE_KEYS */
 #else
 unsigned int pub_key_len;
